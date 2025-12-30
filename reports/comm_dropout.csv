@@ -1,0 +1,6 @@
+agents,comm_dropout,comm_delay_steps,reached,success,min_separation,collision_steps,mean_path,mean_traj,mean_steps_to_goal,mean_neighbors,dynamic_collision_steps,steps
+8,0.00,0,8,1.00,0.91,0,12.41,11.22,163.2,3.99,0,225
+8,0.20,0,8,1.00,0.92,0,12.41,11.21,157.6,3.21,0,214
+8,0.40,0,8,1.00,0.82,0,12.41,11.22,155.0,2.37,0,213
+8,0.60,0,8,1.00,0.84,0,12.41,11.21,152.4,1.55,0,213
+8,0.80,0,8,1.00,0.84,0,12.41,11.22,150.9,0.80,0,213

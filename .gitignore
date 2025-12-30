@@ -14,3 +14,5 @@ swarm_cooperative.png
 swarm_metrics.csv
 comm_dropout.csv
 comm_delay.csv
+!reports/comm_dropout.csv
+!reports/comm_delay.csv
