@@ -1,0 +1,22 @@
+start: [0, 0, 0]
+goal: [11, 11, 5]
+output_png: output.png
+output_gif: null
+inflation_radius: 0.0
+connectivity: 26
+lookahead: 1.2
+speed: 1.0
+yaw_rate_max: 1.5
+pitch_rate_max: 1.0
+max_pitch: 0.9
+yaw_gain: 1.2
+pitch_gain: 1.0
+dynamic_obstacles:
+  enabled: false
+  replan_interval: 12
+  max_replans: 60
+  obstacles:
+    - position: [2.0, 9.0, 2.0]
+      velocity: [0.6, 0.0, 0.2]
+    - position: [9.0, 2.0, 3.0]
+      velocity: [0.0, 0.6, -0.2]

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "navsim3d"
+version = "0.1.0"
+description = "Minimal 3D robot navigation demo with planning and control."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "matplotlib",
+  "imageio",
+  "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "ruff",
+  "mypy",
+  "pre-commit",
+  "types-PyYAML",
+]
+
+[project.scripts]
+navsim3d-demo = "navsim3d.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["navsim3d*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+warn_unused_ignores = true
