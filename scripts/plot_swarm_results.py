@@ -10,6 +10,11 @@ ROOT = Path(__file__).resolve().parents[1]
 REPORTS = ROOT / "reports"
 
 
+def _save_figure(fig: plt.Figure, out_path: Path) -> None:
+    fig.savefig(out_path, dpi=180)
+    fig.savefig(out_path.with_suffix(".pdf"))
+
+
 def _to_number(value: str) -> Any:
     raw = value.strip()
     if raw == "":
@@ -58,7 +63,7 @@ def plot_scale_sweep(rows: List[dict], out_path: Path) -> None:
     axes[2].grid(True, alpha=0.3)
 
     fig.tight_layout()
-    fig.savefig(out_path, dpi=180)
+    _save_figure(fig, out_path)
     plt.close(fig)
 
 
@@ -84,7 +89,7 @@ def plot_comm_sweep(
     axes[1].grid(True, alpha=0.3)
 
     fig.tight_layout()
-    fig.savefig(out_path, dpi=180)
+    _save_figure(fig, out_path)
     plt.close(fig)
 
 
@@ -107,7 +112,7 @@ def plot_dynamic_sweep(rows: List[dict], out_path: Path) -> None:
     axes[1].grid(True, alpha=0.3)
 
     fig.tight_layout()
-    fig.savefig(out_path, dpi=180)
+    _save_figure(fig, out_path)
     plt.close(fig)
 
 
@@ -140,7 +145,7 @@ def plot_dynamic_compare(
     axes[1].legend()
 
     fig.tight_layout()
-    fig.savefig(out_path, dpi=180)
+    _save_figure(fig, out_path)
     plt.close(fig)
 
 

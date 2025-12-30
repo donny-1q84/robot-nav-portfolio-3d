@@ -69,6 +69,7 @@ To regenerate plots from CSV sweeps, run:
 ```bash
 python scripts/plot_swarm_results.py
 ```
+This script writes both PNG and PDF plots into `reports/`.
 
 ## Parameters
 ```
