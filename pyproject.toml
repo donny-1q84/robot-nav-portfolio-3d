@@ -25,6 +25,7 @@ dev = [
 
 [project.scripts]
 navsim3d-demo = "navsim3d.cli:main"
+navsim3d-swarm = "navsim3d.swarm_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

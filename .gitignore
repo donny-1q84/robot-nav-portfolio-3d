@@ -1,0 +1,16 @@
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+navsim3d/__pycache__/
+navsim3d.egg-info/
+output.png
+swarm.png
+swarm_prioritized.png
+swarm_dynamic.png
+swarm_cooperative.png
+*.gif
+swarm_metrics.csv
+comm_dropout.csv
+comm_delay.csv
