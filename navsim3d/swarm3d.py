@@ -53,6 +53,25 @@ class SwarmMetrics:
     steps: int
 
 
+@dataclass(frozen=True)
+class CBSConstraint:
+    agent: int
+    time: int
+    cell: Cell3D | None = None
+    edge: tuple[Cell3D, Cell3D] | None = None
+
+
+@dataclass(frozen=True)
+class CBSConflict:
+    kind: str
+    time: int
+    agent_a: int
+    agent_b: int
+    cell: Cell3D | None = None
+    edge_a: tuple[Cell3D, Cell3D] | None = None
+    edge_b: tuple[Cell3D, Cell3D] | None = None
+
+
 def plan_swarm_paths(
     costmap: CostMap3D,
     starts: List[Cell3D],
@@ -283,6 +302,322 @@ def simulate_swarm_cooperative(
         mean_path_length=_mean_length(schedules),
     )
     return schedules, metrics
+
+
+def simulate_swarm_cbs(
+    grid: GridMap3D,
+    costmap: CostMap3D,
+    starts: List[Cell3D],
+    goals: List[Cell3D],
+    params: SwarmParams,
+    connectivity: int,
+    dynamic_field: "DynamicObstacleField3D | None" = None,
+    max_expansions: int = 800,
+) -> Tuple[List[List[Point3D]], SwarmMetrics]:
+    schedules = _build_cbs_schedule(
+        costmap,
+        starts,
+        goals,
+        params,
+        connectivity,
+        max_expansions,
+    )
+    metrics = _schedule_metrics(
+        schedules,
+        goals,
+        params,
+        grid,
+        dynamic_field,
+        mean_path_length=_mean_length(schedules),
+    )
+    return schedules, metrics
+
+
+def _build_cbs_schedule(
+    costmap: CostMap3D,
+    starts: List[Cell3D],
+    goals: List[Cell3D],
+    params: SwarmParams,
+    connectivity: int,
+    max_expansions: int,
+) -> List[List[Point3D]]:
+    if len(starts) != len(goals):
+        raise ValueError("Starts/goals must have the same length.")
+
+    grid = costmap.inflated_map()
+    constraints: List[CBSConstraint] = []
+    schedules: List[List[Cell3D]] = []
+
+    for agent_idx, (start, goal) in enumerate(zip(starts, goals)):
+        schedule = _cbs_plan_for_agent(
+            grid,
+            start,
+            goal,
+            constraints,
+            agent_idx,
+            params,
+            connectivity,
+        )
+        if schedule is None:
+            raise ValueError(f"No CBS path found for agent {agent_idx}.")
+        schedules.append(schedule)
+
+    root_cost = _schedule_cost(schedules)
+    open_heap: list[tuple[int, int, List[CBSConstraint], List[List[Cell3D]]]] = []
+    counter = 0
+    heapq.heappush(open_heap, (root_cost, counter, constraints, schedules))
+
+    expansions = 0
+    while open_heap:
+        _, _, node_constraints, node_schedules = heapq.heappop(open_heap)
+        conflict = _find_first_conflict(node_schedules)
+        if conflict is None:
+            return [_cells_to_points(schedule) for schedule in node_schedules]
+
+        expansions += 1
+        if expansions > max_expansions:
+            raise ValueError("CBS exceeded expansion budget.")
+
+        for constraint in _constraints_from_conflict(conflict):
+            new_constraints = list(node_constraints)
+            new_constraints.append(constraint)
+            new_schedules = list(node_schedules)
+            agent_idx = constraint.agent
+            schedule = _cbs_plan_for_agent(
+                grid,
+                starts[agent_idx],
+                goals[agent_idx],
+                new_constraints,
+                agent_idx,
+                params,
+                connectivity,
+            )
+            if schedule is None:
+                continue
+            new_schedules[agent_idx] = schedule
+            counter += 1
+            cost = _schedule_cost(new_schedules)
+            heapq.heappush(open_heap, (cost, counter, new_constraints, new_schedules))
+
+    raise ValueError("CBS failed to resolve conflicts.")
+
+
+def _constraints_from_conflict(conflict: CBSConflict) -> List[CBSConstraint]:
+    if conflict.kind == "vertex":
+        return [
+            CBSConstraint(
+                agent=conflict.agent_a,
+                time=conflict.time,
+                cell=conflict.cell,
+            ),
+            CBSConstraint(
+                agent=conflict.agent_b,
+                time=conflict.time,
+                cell=conflict.cell,
+            ),
+        ]
+    if conflict.kind == "edge":
+        return [
+            CBSConstraint(
+                agent=conflict.agent_a,
+                time=conflict.time,
+                edge=conflict.edge_a,
+            ),
+            CBSConstraint(
+                agent=conflict.agent_b,
+                time=conflict.time,
+                edge=conflict.edge_b,
+            ),
+        ]
+    raise ValueError(f"Unknown conflict kind: {conflict.kind}")
+
+
+def _cbs_plan_for_agent(
+    grid: GridMap3D,
+    start: Cell3D,
+    goal: Cell3D,
+    constraints: List[CBSConstraint],
+    agent_idx: int,
+    params: SwarmParams,
+    connectivity: int,
+) -> List[Cell3D] | None:
+    start_time = agent_idx * params.start_delay_steps
+    if start_time >= params.max_steps:
+        return None
+
+    vertex_constraints, edge_constraints = _constraint_sets(constraints, agent_idx)
+    for t in range(start_time):
+        if (start, t) in vertex_constraints:
+            return None
+
+    path_cells = _time_astar_constrained(
+        grid,
+        start,
+        goal,
+        vertex_constraints,
+        edge_constraints,
+        params.max_steps,
+        connectivity,
+        params.goal_hold_steps,
+        start_time,
+    )
+    if path_cells is None:
+        return None
+
+    schedule: List[Cell3D] = [start] * start_time + path_cells
+    for _ in range(params.goal_hold_steps):
+        if len(schedule) >= params.max_steps:
+            break
+        schedule.append(schedule[-1])
+    return schedule
+
+
+def _constraint_sets(
+    constraints: List[CBSConstraint],
+    agent: int,
+) -> tuple[set[tuple[Cell3D, int]], set[tuple[Cell3D, Cell3D, int]]]:
+    vertex_constraints: set[tuple[Cell3D, int]] = set()
+    edge_constraints: set[tuple[Cell3D, Cell3D, int]] = set()
+    for constraint in constraints:
+        if constraint.agent != agent:
+            continue
+        if constraint.cell is not None:
+            vertex_constraints.add((constraint.cell, constraint.time))
+        if constraint.edge is not None:
+            edge_constraints.add(
+                (constraint.edge[0], constraint.edge[1], constraint.time)
+            )
+    return vertex_constraints, edge_constraints
+
+
+def _find_first_conflict(
+    schedules: List[List[Cell3D]],
+) -> CBSConflict | None:
+    if not schedules:
+        return None
+    agents = len(schedules)
+    max_steps = max((len(schedule) for schedule in schedules), default=0)
+
+    for time_idx in range(max_steps):
+        positions: List[Cell3D] = []
+        prev_positions: List[Cell3D] = []
+        for schedule in schedules:
+            pos = schedule[time_idx] if time_idx < len(schedule) else schedule[-1]
+            positions.append(pos)
+            if time_idx == 0:
+                prev_positions.append(pos)
+            else:
+                prev = (
+                    schedule[time_idx - 1]
+                    if time_idx - 1 < len(schedule)
+                    else schedule[-1]
+                )
+                prev_positions.append(prev)
+
+        for i in range(agents):
+            for j in range(i + 1, agents):
+                if positions[i] == positions[j]:
+                    return CBSConflict(
+                        kind="vertex",
+                        time=time_idx,
+                        agent_a=i,
+                        agent_b=j,
+                        cell=positions[i],
+                    )
+        if time_idx == 0:
+            continue
+        for i in range(agents):
+            for j in range(i + 1, agents):
+                if (
+                    positions[i] == prev_positions[j]
+                    and positions[j] == prev_positions[i]
+                ):
+                    return CBSConflict(
+                        kind="edge",
+                        time=time_idx,
+                        agent_a=i,
+                        agent_b=j,
+                        edge_a=(prev_positions[i], positions[i]),
+                        edge_b=(prev_positions[j], positions[j]),
+                    )
+    return None
+
+
+def _schedule_cost(schedules: List[List[Cell3D]]) -> int:
+    return sum(len(schedule) for schedule in schedules)
+
+
+def _time_astar_constrained(
+    grid: GridMap3D,
+    start: Cell3D,
+    goal: Cell3D,
+    vertex_constraints: set[tuple[Cell3D, int]],
+    edge_constraints: set[tuple[Cell3D, Cell3D, int]],
+    max_steps: int,
+    connectivity: int,
+    goal_hold_steps: int,
+    start_time: int,
+) -> List[Cell3D] | None:
+    if start_time >= max_steps:
+        return None
+    if (start, start_time) in vertex_constraints:
+        return None
+
+    start_state = (start, start_time)
+    open_heap: list[tuple[float, Cell3D, int]] = []
+    heapq.heappush(
+        open_heap, (start_time + _distance(start, goal), start, start_time)
+    )
+    came_from: dict[tuple[Cell3D, int], tuple[Cell3D, int]] = {}
+    g_cost: dict[tuple[Cell3D, int], int] = {start_state: start_time}
+
+    offsets = _neighbor_offsets(connectivity)
+    offsets.append((0, 0, 0))
+
+    while open_heap:
+        _, current, time_idx = heapq.heappop(open_heap)
+        state = (current, time_idx)
+        if current == goal and _goal_hold_clear_constraints(
+            vertex_constraints, goal, time_idx, goal_hold_steps, max_steps
+        ):
+            return _reconstruct_time_path(came_from, state)
+
+        if time_idx >= max_steps - 1:
+            continue
+
+        for dx, dy, dz in offsets:
+            nxt = (current[0] + dx, current[1] + dy, current[2] + dz)
+            next_time = time_idx + 1
+            if not grid.in_bounds(nxt) or not grid.is_free(nxt):
+                continue
+            if (nxt, next_time) in vertex_constraints:
+                continue
+            if (current, nxt, next_time) in edge_constraints:
+                continue
+
+            nxt_state = (nxt, next_time)
+            if nxt_state in g_cost and next_time >= g_cost[nxt_state]:
+                continue
+            g_cost[nxt_state] = next_time
+            came_from[nxt_state] = state
+            f_cost = next_time + _distance(nxt, goal)
+            heapq.heappush(open_heap, (f_cost, nxt, next_time))
+
+    return None
+
+
+def _goal_hold_clear_constraints(
+    vertex_constraints: set[tuple[Cell3D, int]],
+    goal: Cell3D,
+    time_idx: int,
+    hold_steps: int,
+    max_steps: int,
+) -> bool:
+    end_time = min(max_steps - 1, time_idx + hold_steps)
+    for t in range(time_idx + 1, end_time + 1):
+        if (goal, t) in vertex_constraints:
+            return False
+    return True
 
 
 def generate_swarm_tasks(

@@ -29,6 +29,10 @@ Override agent count or seed:
 navsim3d-swarm --agents 20 --seed 7 --png swarm.png
 ```
 
+Large map scenario:
+```bash
+navsim3d-swarm --map large --agents 30 --png swarm_large.png
+```
 Prioritized baseline (time-coordinated scheduling):
 ```bash
 navsim3d-swarm --mode prioritized --png swarm_prioritized.png
@@ -37,6 +41,11 @@ navsim3d-swarm --mode prioritized --png swarm_prioritized.png
 Cooperative A* baseline (time-extended planning with reservations):
 ```bash
 navsim3d-swarm --mode cooperative --png swarm_cooperative.png
+```
+
+Conflict-based search (CBS) baseline:
+```bash
+navsim3d-swarm --mode cbs --png swarm_cbs.png
 ```
 
 Sweep multiple swarm sizes (writes metrics to CSV):
@@ -71,6 +80,29 @@ python scripts/plot_swarm_results.py
 ```
 This script writes both PNG and PDF plots into `reports/`.
 
+Multi-seed experiment sweeps (aggregated with 95% CI):
+```bash
+python scripts/run_experiments.py --seeds 0,1,2,3,4
+python scripts/plot_swarm_results.py
+```
+
+Large-scale sweep config:
+```bash
+navsim3d-swarm --config configs/swarm_large.yaml --png swarm_large.png
+```
+
+## ROS 2 (optional)
+The simulator does not require ROS, but a minimal ROS 2 wrapper is included for RViz.
+```bash
+cd ros2
+python -m pip install -e ..
+source /opt/ros/humble/setup.bash
+colcon build --packages-select navsim3d_ros
+source install/setup.bash
+ros2 run navsim3d_ros swarm_node --ros-args -p config:=../configs/swarm.yaml
+```
+This publishes markers on `/navsim3d/swarm_markers` for visualization in RViz.
+
 ## Parameters
 ```
 --config path  Config file (default: configs/default.yaml)
@@ -100,5 +132,5 @@ This script writes both PNG and PDF plots into `reports/`.
 - **Costmap**: 3D obstacle inflation.
 - **Dynamic obstacles**: moving voxels with periodic replanning.
 - **Visualization**: 3D obstacles, planned path, executed trajectory.
-- **Swarm**: per-agent A* with local avoidance or prioritized/cooperative scheduling, plus optional comm limits.
+- **Swarm**: per-agent A* with local avoidance or prioritized/cooperative/CBS scheduling, plus optional comm limits.
 - **Learning**: MLP-based dynamic obstacle predictor for predictive avoidance.

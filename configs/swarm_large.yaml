@@ -1,21 +1,21 @@
 swarm:
   mode: distributed
-  map: demo
-  output_png: swarm.png
+  map: large
+  output_png: swarm_large.png
   output_gif: null
   inflation_radius: 0.0
   connectivity: 26
-  agents: 8
+  agents: 30
   seed: 4
-  min_start_separation: 1.5
-  min_goal_separation: 1.5
-  min_goal_distance: 6.0
-  min_separation: 0.8
-  neighbor_radius: 2.0
-  avoidance_gain: 0.8
-  obstacle_avoidance_gain: 0.9
-  obstacle_avoidance_radius: 2.5
-  start_delay_steps: 10
+  min_start_separation: 1.8
+  min_goal_separation: 1.8
+  min_goal_distance: 12.0
+  min_separation: 1.0
+  neighbor_radius: 3.0
+  avoidance_gain: 0.9
+  obstacle_avoidance_gain: 1.0
+  obstacle_avoidance_radius: 3.0
+  start_delay_steps: 5
   respect_obstacles: false
   goal_hold_steps: 30
   comm_range: 0.0
@@ -24,10 +24,10 @@ swarm:
   comm_max_neighbors: 0
   comm_seed: 4
   dt: 0.1
-  max_steps: 700
-  goal_tolerance: 0.4
-  lookahead: 1.2
-  speed: 1.0
+  max_steps: 900
+  goal_tolerance: 0.5
+  lookahead: 1.5
+  speed: 1.2
   yaw_rate_max: 1.5
   pitch_rate_max: 1.0
   max_pitch: 0.9
@@ -38,10 +38,10 @@ swarm:
   dynamic_obstacles:
     enabled: false
     obstacles:
-      - position: [2.0, 9.0, 2.0]
-        velocity: [0.6, 0.0, 0.2]
-      - position: [9.0, 2.0, 3.0]
-        velocity: [0.0, 0.6, -0.2]
+      - position: [4.0, 18.0, 2.0]
+        velocity: [0.8, 0.0, 0.2]
+      - position: [18.0, 4.0, 4.0]
+        velocity: [0.0, 0.8, -0.3]
   learned_prediction:
     enabled: false
     model_path: models/obstacle_mlp.json

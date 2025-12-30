@@ -19,6 +19,7 @@ from navsim3d.swarm3d import (
     generate_swarm_tasks,
     plan_swarm_paths,
     simulate_swarm,
+    simulate_swarm_cbs,
     simulate_swarm_cooperative,
     simulate_swarm_prioritized,
 )
@@ -28,6 +29,7 @@ from navsim3d.viz3d import plot_swarm_scene, render_swarm_gif
 @dataclass
 class SwarmConfig:
     mode: str
+    map_name: str
     output_png: Path
     output_gif: Path | None
     inflation_radius: float
@@ -67,12 +69,14 @@ def _load_config(path: Path) -> SwarmConfig:
     pred_history = int(pred_cfg.get("history_steps", 4))
     pred_horizon = int(pred_cfg.get("horizon_steps", 5))
     pred_model = Path(pred_cfg.get("model_path", "models/obstacle_mlp.json"))
+    map_name = str(cfg.get("map", "demo"))
 
     starts = _parse_points(cfg.get("starts"))
     goals = _parse_points(cfg.get("goals"))
 
     return SwarmConfig(
         mode=str(cfg.get("mode", "distributed")),
+        map_name=map_name,
         output_png=Path(cfg.get("output_png", "swarm.png")),
         output_gif=Path(cfg["output_gif"]) if cfg.get("output_gif") else None,
         inflation_radius=float(cfg.get("inflation_radius", 0.0)),
@@ -268,6 +272,16 @@ def _run_swarm(
             cfg.connectivity,
             dynamic_field,
         )
+    elif cfg.mode == "cbs":
+        trajectories, metrics = simulate_swarm_cbs(
+            grid,
+            costmap,
+            starts,
+            goals,
+            cfg.swarm_params,
+            cfg.connectivity,
+            dynamic_field,
+        )
     else:
         trajectories, metrics = simulate_swarm(
             grid,
@@ -291,9 +305,15 @@ def main() -> None:
     parser.add_argument("--png", type=Path, default=None)
     parser.add_argument("--gif", type=Path, default=None)
     parser.add_argument(
+        "--map",
+        type=str,
+        choices=["demo", "large"],
+        default=None,
+    )
+    parser.add_argument(
         "--mode",
         type=str,
-        choices=["distributed", "prioritized", "cooperative"],
+        choices=["distributed", "prioritized", "cooperative", "cbs"],
         default=None,
     )
     parser.add_argument(
@@ -368,6 +388,8 @@ def main() -> None:
         cfg.output_gif = args.gif
     if args.mode is not None:
         cfg.mode = args.mode
+    if args.map is not None:
+        cfg.map_name = args.map
     if args.predictive_enabled is not None:
         cfg.prediction_enabled = args.predictive_enabled
     if args.predictor is not None:
@@ -381,7 +403,12 @@ def main() -> None:
     if args.dynamic_enabled is not None:
         cfg.dynamic_enabled = args.dynamic_enabled
 
-    grid = demo_grid()
+    if cfg.map_name == "large":
+        from navsim3d.map3d import large_demo_grid
+
+        grid = large_demo_grid()
+    else:
+        grid = demo_grid()
     costmap = CostMap3D.from_grid(grid, cfg.inflation_radius)
 
     sweep_flags = [

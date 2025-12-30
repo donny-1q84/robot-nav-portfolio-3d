@@ -11,6 +11,8 @@ swarm_prioritized.png
 swarm_dynamic.png
 swarm_cooperative.png
 swarm_predictive.png
+swarm_cbs.png
+swarm_large.png
 *.gif
 swarm_metrics.csv
 comm_dropout.csv

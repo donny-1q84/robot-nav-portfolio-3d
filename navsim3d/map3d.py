@@ -71,3 +71,28 @@ def demo_grid() -> GridMap3D:
         grid[4][y][8] = 0
 
     return GridMap3D(grid=grid)
+
+
+def large_demo_grid() -> GridMap3D:
+    width, height, depth = 24, 24, 8
+    grid = _empty_grid(width, height, depth)
+
+    # Central pillar.
+    _add_box(grid, 9, 15, 9, 15, 0, 8)
+
+    # Low wall with a wide gap.
+    _add_box(grid, 2, 22, 6, 7, 0, 3)
+    for z in range(0, 3):
+        for x in range(10, 14):
+            grid[z][6][x] = 0
+
+    # High wall with a mid-level gap.
+    _add_box(grid, 16, 17, 3, 22, 4, 8)
+    for y in range(8, 16):
+        grid[6][y][16] = 0
+
+    # Corner blocks.
+    _add_box(grid, 2, 6, 2, 6, 0, 4)
+    _add_box(grid, 18, 22, 18, 22, 0, 4)
+
+    return GridMap3D(grid=grid)
