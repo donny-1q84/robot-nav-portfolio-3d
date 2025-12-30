@@ -4,7 +4,7 @@ import heapq
 import math
 import random
 from dataclasses import dataclass
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, TYPE_CHECKING
 
 from .collision3d import point_in_collision
 from .control3d import UAVParams
@@ -12,6 +12,8 @@ from .costmap3d import CostMap3D
 from .map3d import GridMap3D
 from .planner3d import plan_path
 
+if TYPE_CHECKING:
+    from .learned_pred import LearnedObstaclePredictor
 Point3D = Tuple[float, float, float]
 Cell3D = Tuple[int, int, int]
 PoseState = Tuple[float, float, float, float, float]
@@ -25,6 +27,8 @@ class SwarmParams:
     min_separation: float = 0.8
     neighbor_radius: float = 2.5
     avoidance_gain: float = 1.2
+    obstacle_avoidance_gain: float = 0.9
+    obstacle_avoidance_radius: float = 2.5
     start_delay_steps: int = 3
     respect_obstacles: bool = False
     goal_hold_steps: int = 30
@@ -76,6 +80,7 @@ def simulate_swarm(
     params: SwarmParams,
     ctrl_params: UAVParams,
     dynamic_field: "DynamicObstacleField3D | None" = None,
+    predictor: "LearnedObstaclePredictor | None" = None,
 ) -> Tuple[List[List[Point3D]], SwarmMetrics]:
     agents = len(paths)
     states: List[PoseState] = []
@@ -84,6 +89,9 @@ def simulate_swarm(
     goal_steps: List[int | None] = [None] * agents
     trajectories: List[List[Point3D]] = []
     rng = random.Random(params.comm_seed)
+    obstacle_history: List[List[Point3D]] | None = None
+    if dynamic_field is not None and predictor is not None:
+        obstacle_history = [[] for _ in dynamic_field.obstacles]
 
     for path, start in zip(paths, starts):
         start_pose = (float(start[0]), float(start[1]), float(start[2]))
@@ -100,9 +108,22 @@ def simulate_swarm(
 
     for step in range(params.max_steps):
         dynamic_cells: set[Cell3D] = set()
+        obstacle_positions: List[Point3D] = []
         if dynamic_field is not None:
             dynamic_field.step(params.dt, grid)
             dynamic_cells = set(dynamic_field.cells(grid))
+            if predictor is not None and obstacle_history is not None:
+                dynamic_positions = dynamic_field.positions()
+                for idx, pos in enumerate(dynamic_positions):
+                    history = obstacle_history[idx]
+                    history.append(pos)
+                    if len(history) > predictor.history_steps:
+                        history.pop(0)
+                predicted_positions: List[Point3D] = []
+                for history in obstacle_history:
+                    if len(history) >= predictor.history_steps:
+                        predicted_positions.extend(predictor.predict_horizon(history))
+                obstacle_positions = dynamic_positions + predicted_positions
         positions = [(state[0], state[1], state[2]) for state in states]
         step_min = _min_pair_distance(positions)
         min_pair_distance = min(min_pair_distance, step_min)
@@ -134,7 +155,13 @@ def simulate_swarm(
             neighbors = _visible_neighbors(i, positions, trajectories, params, rng)
             neighbor_samples += len(neighbors)
             speed, yaw_rate, pitch_rate, target_idx, min_dist, direction = _swarm_guidance(
-                state, paths[i], ctrl_params, target_indices[i], neighbors, params
+                state,
+                paths[i],
+                ctrl_params,
+                target_indices[i],
+                neighbors,
+                obstacle_positions,
+                params,
             )
             yaw = _wrap_angle(state[3] + yaw_rate * params.dt)
             pitch = _clamp(
@@ -156,7 +183,7 @@ def simulate_swarm(
 
             if params.respect_obstacles and (
                 point_in_collision(costmap, (x, y, z))
-                or _point_in_dynamic_cells((x, y, z), dynamic_cells)
+                or _point_in_cells((x, y, z), dynamic_cells)
             ):
                 speed, yaw_rate, pitch_rate = _command_from_direction(
                     state, direction, ctrl_params
@@ -174,7 +201,7 @@ def simulate_swarm(
                 x = _clamp(state[0] + vx * params.dt, 0.0, grid.width - 1.0)
                 y = _clamp(state[1] + vy * params.dt, 0.0, grid.height - 1.0)
                 z = _clamp(state[2] + vz * params.dt, 0.0, grid.depth - 1.0)
-                if point_in_collision(costmap, (x, y, z)) or _point_in_dynamic_cells(
+                if point_in_collision(costmap, (x, y, z)) or _point_in_cells(
                     (x, y, z), dynamic_cells
                 ):
                     x, y, z = state[0], state[1], state[2]
@@ -654,11 +681,11 @@ def _schedule_metrics(
     return metrics
 
 
-def _point_in_dynamic_cells(point: Point3D, dynamic_cells: set[Cell3D]) -> bool:
-    if not dynamic_cells:
+def _point_in_cells(point: Point3D, cells: set[Cell3D]) -> bool:
+    if not cells:
         return False
     cell = _to_cell(point)
-    return cell in dynamic_cells
+    return cell in cells
 
 
 def _any_dynamic_collision(positions: List[Point3D], dynamic_cells: set[Cell3D]) -> bool:
@@ -748,6 +775,7 @@ def _swarm_guidance(
     params: UAVParams,
     last_target_idx: int,
     neighbors: Iterable[Point3D],
+    obstacle_positions: Iterable[Point3D],
     swarm_params: SwarmParams,
 ) -> Tuple[float, float, float, int, float, Point3D]:
     if not path:
@@ -760,20 +788,29 @@ def _swarm_guidance(
     repulsion, min_dist = _repulsion_vector(
         (x, y, z), neighbors, swarm_params.neighbor_radius
     )
+    obstacle_repulsion, obstacle_min_dist = _repulsion_vector(
+        (x, y, z), obstacle_positions, swarm_params.obstacle_avoidance_radius
+    )
 
+    combined = direction
     if min_dist < swarm_params.min_separation:
         combined = (
-            direction[0] + swarm_params.avoidance_gain * repulsion[0],
-            direction[1] + swarm_params.avoidance_gain * repulsion[1],
-            direction[2] + swarm_params.avoidance_gain * repulsion[2],
+            combined[0] + swarm_params.avoidance_gain * repulsion[0],
+            combined[1] + swarm_params.avoidance_gain * repulsion[1],
+            combined[2] + swarm_params.avoidance_gain * repulsion[2],
         )
-    else:
-        combined = direction
+    if obstacle_repulsion != (0.0, 0.0, 0.0):
+        combined = (
+            combined[0] + swarm_params.obstacle_avoidance_gain * obstacle_repulsion[0],
+            combined[1] + swarm_params.obstacle_avoidance_gain * obstacle_repulsion[1],
+            combined[2] + swarm_params.obstacle_avoidance_gain * obstacle_repulsion[2],
+        )
     if _norm(combined) < 1e-6:
         combined = direction if _norm(direction) > 1e-6 else repulsion
 
     speed, yaw_rate, pitch_rate = _command_from_direction(pose, combined, params)
     speed = _apply_neighbor_speed_scale(speed, min_dist, swarm_params)
+    speed = _apply_obstacle_speed_scale(speed, obstacle_min_dist, swarm_params)
 
     return speed, yaw_rate, pitch_rate, target_idx, min_dist, direction
 
@@ -860,6 +897,18 @@ def _apply_neighbor_speed_scale(
         return speed * 0.3
     if min_dist < swarm_params.neighbor_radius:
         return speed * max(0.5, min_dist / swarm_params.neighbor_radius)
+    return speed
+
+
+def _apply_obstacle_speed_scale(
+    speed: float, min_dist: float, swarm_params: SwarmParams
+) -> float:
+    if min_dist == float("inf"):
+        return speed
+    if min_dist < 1e-6:
+        return speed * 0.2
+    if min_dist < swarm_params.obstacle_avoidance_radius:
+        return speed * max(0.4, min_dist / swarm_params.obstacle_avoidance_radius)
     return speed
 
 

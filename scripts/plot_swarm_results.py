@@ -111,12 +111,46 @@ def plot_dynamic_sweep(rows: List[dict], out_path: Path) -> None:
     plt.close(fig)
 
 
+def plot_dynamic_compare(
+    base_rows: List[dict], pred_rows: List[dict], out_path: Path
+) -> None:
+    base_rows = sorted(base_rows, key=lambda row: row["agents"])
+    pred_rows = sorted(pred_rows, key=lambda row: row["agents"])
+    agents = [row["agents"] for row in base_rows]
+    base_dyn = [row["dynamic_collision_steps"] for row in base_rows]
+    pred_dyn = [row["dynamic_collision_steps"] for row in pred_rows]
+    base_sep = [row["min_separation"] for row in base_rows]
+    pred_sep = [row["min_separation"] for row in pred_rows]
+
+    fig, axes = plt.subplots(1, 2, figsize=(8.5, 3.4))
+    axes[0].plot(agents, base_dyn, marker="o", color="#9467bd", label="Baseline")
+    axes[0].plot(agents, pred_dyn, marker="o", color="#17becf", label="Predictive")
+    axes[0].set_title("Dynamic Collision Steps")
+    axes[0].set_xlabel("Agents")
+    axes[0].set_ylabel("Dynamic Collision Steps")
+    axes[0].grid(True, alpha=0.3)
+    axes[0].legend()
+
+    axes[1].plot(agents, base_sep, marker="o", color="#8c564b", label="Baseline")
+    axes[1].plot(agents, pred_sep, marker="o", color="#2ca02c", label="Predictive")
+    axes[1].set_title("Min Separation")
+    axes[1].set_xlabel("Agents")
+    axes[1].set_ylabel("Min Separation")
+    axes[1].grid(True, alpha=0.3)
+    axes[1].legend()
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=180)
+    plt.close(fig)
+
+
 def main() -> None:
     REPORTS.mkdir(exist_ok=True)
     scale_path = REPORTS / "scale_sweep.csv"
     dropout_path = REPORTS / "comm_dropout.csv"
     delay_path = REPORTS / "comm_delay.csv"
     dynamic_path = REPORTS / "dynamic_sweep.csv"
+    predictive_path = REPORTS / "dynamic_sweep_predictive.csv"
 
     if scale_path.exists():
         plot_scale_sweep(read_csv(scale_path), REPORTS / "scale_sweep.png")
@@ -136,6 +170,12 @@ def main() -> None:
         )
     if dynamic_path.exists():
         plot_dynamic_sweep(read_csv(dynamic_path), REPORTS / "dynamic_sweep.png")
+    if dynamic_path.exists() and predictive_path.exists():
+        plot_dynamic_compare(
+            read_csv(dynamic_path),
+            read_csv(predictive_path),
+            REPORTS / "dynamic_compare.png",
+        )
 
 
 if __name__ == "__main__":

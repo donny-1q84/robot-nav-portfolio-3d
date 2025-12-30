@@ -11,6 +11,7 @@ import yaml
 from navsim3d.control3d import UAVParams
 from navsim3d.costmap3d import CostMap3D
 from navsim3d.dynamic3d import DynamicObstacle3D, DynamicObstacleField3D
+from navsim3d.learned_pred import load_predictor
 from navsim3d.map3d import demo_grid
 from navsim3d.swarm3d import (
     SwarmMetrics,
@@ -40,6 +41,10 @@ class SwarmConfig:
     goals: List[Tuple[int, int, int]] | None
     dynamic_enabled: bool
     dynamic_obstacles: List[DynamicObstacle3D]
+    prediction_enabled: bool
+    prediction_history_steps: int
+    prediction_horizon_steps: int
+    prediction_model_path: Path
     swarm_params: SwarmParams
     ctrl_params: UAVParams
 
@@ -56,6 +61,12 @@ def _load_config(path: Path) -> SwarmConfig:
     dyn_cfg = cfg.get("dynamic_obstacles", {}) or {}
     dyn_enabled = bool(dyn_cfg.get("enabled", False))
     dyn_obstacles = _parse_dynamic_obstacles(dyn_cfg)
+
+    pred_cfg = cfg.get("learned_prediction", {}) or {}
+    pred_enabled = bool(pred_cfg.get("enabled", False))
+    pred_history = int(pred_cfg.get("history_steps", 4))
+    pred_horizon = int(pred_cfg.get("horizon_steps", 5))
+    pred_model = Path(pred_cfg.get("model_path", "models/obstacle_mlp.json"))
 
     starts = _parse_points(cfg.get("starts"))
     goals = _parse_points(cfg.get("goals"))
@@ -75,6 +86,10 @@ def _load_config(path: Path) -> SwarmConfig:
         goals=goals,
         dynamic_enabled=dyn_enabled,
         dynamic_obstacles=dyn_obstacles,
+        prediction_enabled=pred_enabled,
+        prediction_history_steps=pred_history,
+        prediction_horizon_steps=pred_horizon,
+        prediction_model_path=pred_model,
         swarm_params=SwarmParams(
             dt=float(cfg.get("dt", 0.1)),
             max_steps=int(cfg.get("max_steps", 700)),
@@ -82,6 +97,8 @@ def _load_config(path: Path) -> SwarmConfig:
             min_separation=float(cfg.get("min_separation", 0.8)),
             neighbor_radius=float(cfg.get("neighbor_radius", 2.5)),
             avoidance_gain=float(cfg.get("avoidance_gain", 1.2)),
+            obstacle_avoidance_gain=float(cfg.get("obstacle_avoidance_gain", 0.9)),
+            obstacle_avoidance_radius=float(cfg.get("obstacle_avoidance_radius", 2.5)),
             start_delay_steps=int(cfg.get("start_delay_steps", 3)),
             respect_obstacles=bool(cfg.get("respect_obstacles", False)),
             goal_hold_steps=int(cfg.get("goal_hold_steps", 30)),
@@ -223,6 +240,16 @@ def _run_swarm(
 ]:
     paths = plan_swarm_paths(costmap, starts, goals, connectivity=cfg.connectivity)
     dynamic_field = _clone_dynamic_field(cfg)
+    predictor = None
+    if cfg.prediction_enabled and cfg.mode == "distributed":
+        try:
+            predictor = load_predictor(
+                cfg.prediction_model_path,
+                cfg.prediction_horizon_steps,
+                expected_history_steps=cfg.prediction_history_steps,
+            )
+        except Exception as exc:
+            raise SystemExit(f"Failed to load predictor: {exc}") from exc
     if cfg.mode == "prioritized":
         trajectories, metrics = simulate_swarm_prioritized(
             grid,
@@ -251,6 +278,7 @@ def _run_swarm(
             cfg.swarm_params,
             cfg.ctrl_params,
             dynamic_field,
+            predictor,
         )
     return paths, trajectories, metrics
 
@@ -266,6 +294,33 @@ def main() -> None:
         "--mode",
         type=str,
         choices=["distributed", "prioritized", "cooperative"],
+        default=None,
+    )
+    parser.add_argument(
+        "--predictive",
+        dest="predictive_enabled",
+        action="store_true",
+        default=None,
+    )
+    parser.add_argument(
+        "--no-predictive",
+        dest="predictive_enabled",
+        action="store_false",
+        default=None,
+    )
+    parser.add_argument("--predictor", type=Path, default=None)
+    parser.add_argument("--prediction-history", type=int, default=None)
+    parser.add_argument("--prediction-horizon", type=int, default=None)
+    parser.add_argument(
+        "--respect-obstacles",
+        dest="respect_obstacles",
+        action="store_true",
+        default=None,
+    )
+    parser.add_argument(
+        "--no-respect-obstacles",
+        dest="respect_obstacles",
+        action="store_false",
         default=None,
     )
     parser.add_argument(
@@ -313,6 +368,16 @@ def main() -> None:
         cfg.output_gif = args.gif
     if args.mode is not None:
         cfg.mode = args.mode
+    if args.predictive_enabled is not None:
+        cfg.prediction_enabled = args.predictive_enabled
+    if args.predictor is not None:
+        cfg.prediction_model_path = args.predictor
+    if args.prediction_history is not None:
+        cfg.prediction_history_steps = args.prediction_history
+    if args.prediction_horizon is not None:
+        cfg.prediction_horizon_steps = args.prediction_horizon
+    if args.respect_obstacles is not None:
+        cfg.swarm_params.respect_obstacles = args.respect_obstacles
     if args.dynamic_enabled is not None:
         cfg.dynamic_enabled = args.dynamic_enabled
 

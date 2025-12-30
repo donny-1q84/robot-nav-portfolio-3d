@@ -12,6 +12,8 @@ swarm:
   min_separation: 0.8
   neighbor_radius: 2.0
   avoidance_gain: 0.8
+  obstacle_avoidance_gain: 0.9
+  obstacle_avoidance_radius: 2.5
   start_delay_steps: 10
   respect_obstacles: false
   goal_hold_steps: 30
@@ -39,3 +41,8 @@ swarm:
         velocity: [0.6, 0.0, 0.2]
       - position: [9.0, 2.0, 3.0]
         velocity: [0.0, 0.6, -0.2]
+  learned_prediction:
+    enabled: false
+    model_path: models/obstacle_mlp.json
+    history_steps: 4
+    horizon_steps: 5

@@ -59,6 +59,12 @@ Communication limits are configurable in `configs/swarm.yaml`:
 `comm_range`, `comm_delay_steps`, `comm_dropout`, `comm_max_neighbors`.
 Dynamic obstacles are configurable in `configs/swarm.yaml` under `dynamic_obstacles`.
 
+Learning-based prediction (tiny MLP) for dynamic obstacles:
+```bash
+python scripts/train_obstacle_predictor.py --out models/obstacle_mlp.json
+navsim3d-swarm --dynamic --predictive --respect-obstacles --png swarm_predictive.png
+```
+
 To regenerate plots from CSV sweeps, run:
 ```bash
 python scripts/plot_swarm_results.py
@@ -93,4 +99,5 @@ python scripts/plot_swarm_results.py
 - **Costmap**: 3D obstacle inflation.
 - **Dynamic obstacles**: moving voxels with periodic replanning.
 - **Visualization**: 3D obstacles, planned path, executed trajectory.
-- **Swarm**: per-agent A* with local avoidance or prioritized scheduling, plus optional comm limits.
+- **Swarm**: per-agent A* with local avoidance or prioritized/cooperative scheduling, plus optional comm limits.
+- **Learning**: MLP-based dynamic obstacle predictor for predictive avoidance.

@@ -10,6 +10,7 @@ swarm.png
 swarm_prioritized.png
 swarm_dynamic.png
 swarm_cooperative.png
+swarm_predictive.png
 *.gif
 swarm_metrics.csv
 comm_dropout.csv
