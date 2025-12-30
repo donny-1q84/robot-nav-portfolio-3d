@@ -59,6 +59,11 @@ Communication limits are configurable in `configs/swarm.yaml`:
 `comm_range`, `comm_delay_steps`, `comm_dropout`, `comm_max_neighbors`.
 Dynamic obstacles are configurable in `configs/swarm.yaml` under `dynamic_obstacles`.
 
+To regenerate plots from CSV sweeps, run:
+```bash
+python scripts/plot_swarm_results.py
+```
+
 ## Parameters
 ```
 --config path  Config file (default: configs/default.yaml)

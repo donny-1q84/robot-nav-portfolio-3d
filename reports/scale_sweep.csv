@@ -1,0 +1,6 @@
+agents,reached,success,min_separation,collision_steps,mean_path,mean_traj,mean_steps_to_goal,mean_neighbors,dynamic_collision_steps,steps
+4,4,1.00,1.01,0,12.19,11.04,134.2,2.08,0,172
+8,8,1.00,0.91,0,12.41,11.22,163.2,3.99,0,225
+12,12,1.00,0.62,106,11.86,10.84,191.7,4.90,0,307
+16,16,1.00,0.00,56,12.21,11.03,212.2,6.41,0,321
+20,20,1.00,0.40,281,11.73,10.63,255.5,7.72,0,395
